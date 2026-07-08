@@ -109,3 +109,27 @@ diff --git a/upb_generator/minitable/generator.cc b/upb_generator/minitable/gene
    }
 -  output("const upb_MiniTableExtension $0_obj = {\n  ", ExtensionVarName(ext));
 +  output("const UPB_RETAIN upb_MiniTableExtension $0_obj = {\n  ", ExtensionVarName(ext));
+
+diff --git a/MODULE.bazel b/MODULE.bazel
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -36,10 +36,10 @@
+ bazel_dep(name = "jsoncpp", version = "1.9.6.bcr.2")
+ bazel_dep(name = "rules_java", version = "8.6.1")
+ bazel_dep(name = "rules_jvm_external", version = "6.7")
+-bazel_dep(name = "rules_kotlin", version = "2.3.20")
++bazel_dep(name = "rules_kotlin", version = "2.3.20", dev_dependency = True)
+ bazel_dep(name = "rules_license", version = "1.0.0")
+ bazel_dep(name = "rules_pkg", version = "1.0.1")
+ bazel_dep(name = "rules_python", version = "1.6.0")
+-bazel_dep(name = "rules_rust", version = "0.69.0")
++bazel_dep(name = "rules_rust", version = "0.69.0", dev_dependency = True)
+ 
+ bazel_dep(name = "rules_ruby", version = "0.20.1", dev_dependency = True)
+@@ -194,5 +194,5 @@
+     versions = ["1.85.0"],
+ )
+ 
+-crate = use_extension("@rules_rust//crate_universe:extension.bzl", "crate")
++crate = use_extension("@rules_rust//crate_universe:extension.bzl", "crate", dev_dependency = True)
+ crate.spec(
