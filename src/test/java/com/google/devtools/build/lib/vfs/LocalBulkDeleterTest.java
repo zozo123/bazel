@@ -28,7 +28,6 @@ public final class LocalBulkDeleterTest {
   private final FileSystem fs = new InMemoryFileSystem(DigestHashFunction.SHA256);
   private Path execRoot;
   private Path outsideTarget;
-  private Path trashRoot;
   private LocalBulkDeleter deleter;
 
   @Before
@@ -47,32 +46,61 @@ public final class LocalBulkDeleterTest {
     FileSystemUtils.writeContent(
         execRoot.getRelative("bazel-out/k8-fastbuild/bin/pkg/sibling.txt"), UTF_8, "sibling");
 
-    trashRoot = fs.getPath("/output_base/_bulk_delete_trash");
-    deleter = new LocalBulkDeleter(execRoot, trashRoot, "this-build");
+    deleter = new LocalBulkDeleter(execRoot);
   }
 
   @Test
-  public void trashIsEmptyAfterPendingDeletesFinish() throws Exception {
-    deleter.bulkDelete(
-        ImmutableList.of(PathFragment.create("bazel-out/k8-fastbuild/bin/pkg/stale")));
-
-    deleter.awaitPendingDeletes();
-
-    assertThat(trashRoot.getRelative("this-build").getDirectoryEntries()).isEmpty();
-    assertThat(FileSystemUtils.readContent(outsideTarget, UTF_8)).isEqualTo("keep me");
+  public void useParallelDelete_requiresMultipleSiblingDirectories() {
+    assertThat(LocalBulkDeleter.useParallelDelete(0)).isFalse();
+    assertThat(LocalBulkDeleter.useParallelDelete(1)).isFalse();
+    assertThat(LocalBulkDeleter.useParallelDelete(2)).isTrue();
+    assertThat(LocalBulkDeleter.useParallelDelete(50)).isTrue();
   }
 
   @Test
-  public void deletesTrashLeftByEarlierBuild() throws Exception {
-    deleter.awaitPendingDeletes();
-    Path leftover = trashRoot.getRelative("earlier-build/0/nested");
-    leftover.createDirectoryAndParents();
-    FileSystemUtils.writeContent(leftover.getRelative("f"), UTF_8, "x");
+  public void flatDirectoryUsesSerialPath() throws Exception {
+    Path flat = execRoot.getRelative("bazel-out/k8-fastbuild/bin/pkg/flat");
+    flat.createDirectoryAndParents();
+    for (int i = 0; i < 20; i++) {
+      FileSystemUtils.writeContent(flat.getRelative("f" + i), UTF_8, "x");
+    }
+    LocalBulkDeleter local = new LocalBulkDeleter(execRoot);
 
-    LocalBulkDeleter next = new LocalBulkDeleter(execRoot, trashRoot, "next-build");
-    next.awaitPendingDeletes();
+    local.bulkDelete(ImmutableList.of(PathFragment.create("bazel-out/k8-fastbuild/bin/pkg/flat")));
 
-    assertThat(trashRoot.getDirectoryEntries()).isEmpty();
+    assertThat(local.parallelSubtreeTasks()).isEqualTo(0);
+    assertThat(flat.exists()).isFalse();
+  }
+
+  @Test
+  public void singleRootChainUsesSerialPath() throws Exception {
+    Path root = execRoot.getRelative("bazel-out/k8-fastbuild/bin/pkg/Foo.app");
+    Path deep = root.getRelative("Contents/MacOS");
+    deep.createDirectoryAndParents();
+    FileSystemUtils.writeContent(deep.getRelative("binary"), UTF_8, "x");
+    LocalBulkDeleter local = new LocalBulkDeleter(execRoot);
+
+    local.bulkDelete(
+        ImmutableList.of(PathFragment.create("bazel-out/k8-fastbuild/bin/pkg/Foo.app")));
+
+    assertThat(local.parallelSubtreeTasks()).isEqualTo(0);
+    assertThat(root.exists()).isFalse();
+  }
+
+  @Test
+  public void manySiblingDirectoriesUseParallelPath() throws Exception {
+    Path wide = execRoot.getRelative("bazel-out/k8-fastbuild/bin/pkg/wide");
+    for (int i = 0; i < 8; i++) {
+      Path dir = wide.getRelative("d" + i + "/inner");
+      dir.createDirectoryAndParents();
+      FileSystemUtils.writeContent(dir.getRelative("f"), UTF_8, "x");
+    }
+    LocalBulkDeleter local = new LocalBulkDeleter(execRoot);
+
+    local.bulkDelete(ImmutableList.of(PathFragment.create("bazel-out/k8-fastbuild/bin/pkg/wide")));
+
+    assertThat(local.parallelSubtreeTasks()).isEqualTo(8);
+    assertThat(wide.exists()).isFalse();
   }
 
   @Test

@@ -41,7 +41,7 @@ import javax.annotation.Nullable;
  */
 public class LocalOutputService implements OutputService {
   private final BlazeDirectories directories;
-  @Nullable private volatile LocalBulkDeleter bulkDeleter;
+  @Nullable private volatile String workspaceName;
 
   public LocalOutputService(BlazeDirectories directories) {
     this.directories = checkNotNull(directories);
@@ -61,11 +61,7 @@ public class LocalOutputService implements OutputService {
   public ModifiedFileSet startBuild(
       UUID buildId, String workspaceName, EventHandler eventHandler, boolean finalizeActions)
       throws AbruptExitException {
-    this.bulkDeleter =
-        new LocalBulkDeleter(
-            directories.getExecRoot(workspaceName),
-            directories.getOutputBase().getChild("_bulk_delete_trash"),
-            buildId.toString());
+    this.workspaceName = workspaceName;
     Path outputPath = directories.getOutputPath(workspaceName);
     Path localOutputPath = directories.getLocalOutputPath();
     try {
@@ -91,12 +87,7 @@ public class LocalOutputService implements OutputService {
   }
 
   @Override
-  public void finalizeBuild(boolean buildSuccessful) throws InterruptedException {
-    LocalBulkDeleter deleter = bulkDeleter;
-    if (deleter != null) {
-      deleter.awaitPendingDeletes();
-    }
-  }
+  public void finalizeBuild(boolean buildSuccessful) {}
 
   @Override
   public void finalizeAction(Action action, OutputMetadataStore outputMetadataStore) {}
@@ -120,9 +111,8 @@ public class LocalOutputService implements OutputService {
 
   @Override
   public BulkDeleter bulkDeleter() {
-    LocalBulkDeleter deleter = bulkDeleter;
-    checkState(deleter != null, "bulkDeleter() called before startBuild()");
-    return deleter;
+    checkState(workspaceName != null, "bulkDeleter() called before startBuild()");
+    return new LocalBulkDeleter(directories.getExecRoot(workspaceName));
   }
 
   @Override
